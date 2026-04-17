@@ -1,5 +1,6 @@
 const UserModel = require('../models/user.model');
 const bcrypt = require('bcryptjs');
+const pool = require('../config/db');
 
 const UserController = {
   async getAll(req, res) {
@@ -88,6 +89,50 @@ const UserController = {
       res.json({ success: true, message: 'Usuario eliminado correctamente' });
     } catch (err) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  async buyReward(req, res) {
+    try {
+      const { id } = req.params          // userId
+      const { cost } = req.body          // costo del item
+
+      if (!cost || cost <= 0) {
+        return res.status(400).json({ success: false, message: 'Costo inválido' })
+      }
+
+      // Verificar monedas actuales en BD (fuente de verdad)
+      const userResult = await pool.query(
+        'SELECT coins FROM users WHERE id = $1',
+        [id]
+      )
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Jugador no encontrado' })
+      }
+
+      const currentCoins = userResult.rows[0].coins
+
+      if (currentCoins < cost) {
+        return res.status(400).json({
+          success: false,
+          message: `Oro insuficiente. Tienes ${currentCoins} y necesitas ${cost}.`,
+          coins: currentCoins
+        })
+      }
+
+      // Descontar en BD
+      const updated = await pool.query(
+        'UPDATE users SET coins = coins - $1 WHERE id = $2 RETURNING id, coins',
+        [cost, id]
+      )
+
+      return res.json({
+        success: true,
+        coins: updated.rows[0].coins,
+        message: '¡Recompensa obtenida!'
+      })
+    } catch (err) {
+      res.status(500).json({ success: false, message: 'Error al procesar compra: ' + err.message })
     }
   },
 };

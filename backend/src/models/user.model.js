@@ -4,14 +4,14 @@ const bcrypt = require('bcryptjs');
 const UserModel = {
   async findAll() {
     const { rows } = await pool.query(
-      'SELECT id, name, email, created_at FROM users ORDER BY id'
+      'SELECT id, name, email, xp, level, hp, created_at FROM users ORDER BY id'
     );
     return rows;
   },
 
   async findById(id) {
     const { rows } = await pool.query(
-      'SELECT id, name, email, created_at FROM users WHERE id = $1',
+      'SELECT id, name, email, xp, level, hp, created_at FROM users WHERE id = $1',
       [id]
     );
     return rows[0] || null;
@@ -28,7 +28,7 @@ const UserModel = {
   async create({ name, email, password }) {
     const hashed = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
-      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
+      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email, xp, level, hp, created_at',
       [name, email, hashed]
     );
     return rows[0];
@@ -36,7 +36,7 @@ const UserModel = {
 
   async update(id, { name, email }) {
     const { rows } = await pool.query(
-      'UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, name, email, created_at',
+      'UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, name, email, xp, level, hp, created_at',
       [name, email, id]
     );
     return rows[0] || null;

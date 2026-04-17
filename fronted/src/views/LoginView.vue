@@ -24,6 +24,7 @@ const handleLogin = async () => {
       email: email.value,
       password: password.value
     });
+    localStorage.setItem('user', JSON.stringify(response.data.user));
     alert('¡Bienvenido, ' + response.data.user.name + '!');
     router.push('/home'); // Redirige al inicio tras loguearse
   } catch (error) {

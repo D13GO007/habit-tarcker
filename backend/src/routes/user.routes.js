@@ -183,4 +183,7 @@ router.put('/:id', UserController.update);
  */
 router.delete('/:id', UserController.remove);
 
+// Comprar recompensa (descuenta monedas en BD)
+router.post('/:id/buy', UserController.buyReward);
+
 module.exports = router;

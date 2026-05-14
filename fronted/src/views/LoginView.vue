@@ -1,5 +1,6 @@
 <template>
   <div class="auth-container">
+    <AppToast />
     <div class="auth-card">
       <div class="auth-header">
         <h2>{{ isRegister ? 'Crear Cuenta' : 'Iniciar Sesión' }}</h2>
@@ -8,23 +9,37 @@
 
       <form @submit.prevent="isRegister ? handleRegister() : handleLogin()">
         <div v-if="isRegister" class="input-group">
-          <input v-model="name" type="text" placeholder="Nombre de héroe" required />
+          <input v-model="name" type="text" placeholder="Nombre de héroe" autocomplete="name" readonly @focus="e => e.target.removeAttribute('readonly')" required />
         </div>
         <div class="input-group">
-          <input v-model="email" type="email" placeholder="Email" required />
+          <input v-model="email" type="email" placeholder="Email" autocomplete="email" readonly @focus="e => e.target.removeAttribute('readonly')" required />
         </div>
         <div class="input-group">
-          <input v-model="password" type="password" placeholder="Contraseña" required />
+          <input v-model="password" type="password" placeholder="Contraseña" autocomplete="current-password" readonly @focus="e => e.target.removeAttribute('readonly')" required />
         </div>
-        <button type="submit" class="btn-auth">
-          {{ isRegister ? 'Registrarse' : 'Entrar' }}
+        <div v-if="isRegister" class="gender-select">
+          <label class="gender-option" :class="{ active: gender === 'male' }">
+            <input type="radio" v-model="gender" value="male" />
+            <span>⚔ Hombre</span>
+          </label>
+          <label class="gender-option" :class="{ active: gender === 'female' }">
+            <input type="radio" v-model="gender" value="female" />
+            <span>✦ Mujer</span>
+          </label>
+        </div>
+        <label v-if="isRegister" class="hard-mode-toggle">
+          <input type="checkbox" v-model="hardMode" />
+          <span class="toggle-label">Modo difícil — daño doble, pierdes nivel al morir</span>
+        </label>
+        <button type="submit" class="btn-auth" :disabled="isLoading">
+          {{ isLoading ? '...' : (isRegister ? 'Registrarse' : 'Entrar') }}
         </button>
       </form>
 
       <div class="auth-toggle">
         <span v-if="!isRegister">¿No tienes cuenta?</span>
         <span v-else>¿Ya tienes cuenta?</span>
-        <button type="button" @click="isRegister = !isRegister" class="btn-link">
+        <button type="button" @click="toggleMode" class="btn-link">
           {{ isRegister ? 'Iniciar sesión' : 'Regístrate' }}
         </button>
       </div>
@@ -34,41 +49,58 @@
 
 <script setup>
 import { ref } from 'vue';
-import axios from 'axios';
 import { useRouter } from 'vue-router';
+import AppToast from '../components/AppToast.vue';
+import { loginUser, registerUser } from '../api/users';
+import { useUserStore } from '../stores/user.store';
+import { useToastStore } from '../stores/toast.store';
 
 const email = ref('');
 const password = ref('');
 const name = ref('');
+const hardMode = ref(false);
+const gender = ref('male');
 const isRegister = ref(false);
+const isLoading = ref(false);
 const router = useRouter();
+const userStore = useUserStore();
+const toast = useToastStore();
+
+const toggleMode = () => {
+  isRegister.value = !isRegister.value;
+  email.value = '';
+  password.value = '';
+  name.value = '';
+  hardMode.value = false;
+  gender.value = 'male';
+};
 
 const handleLogin = async () => {
+  isLoading.value = true;
   try {
-    const response = await axios.post('http://localhost:3000/api/users/login', {
-      email: email.value,
-      password: password.value
-    });
-    localStorage.setItem('user', JSON.stringify(response.data.user));
-    alert('¡Bienvenido, ' + response.data.user.name + '!');
+    const res = await loginUser({ email: email.value, password: password.value });
+    userStore.setToken(res.data.token);
+    userStore.applyStats(res.data.user);
     router.push('/home');
   } catch (error) {
-    alert('Error: ' + (error.response?.data?.message || 'No se pudo conectar al servidor'));
+    toast.show(error.response?.data?.message || 'No se pudo conectar al servidor', 'error');
+  } finally {
+    isLoading.value = false;
   }
 };
 
 const handleRegister = async () => {
+  isLoading.value = true;
   try {
-    const response = await axios.post('http://localhost:3000/api/users/register', {
-      name: name.value,
-      email: email.value,
-      password: password.value
-    });
-    localStorage.setItem('user', JSON.stringify(response.data.user));
-    alert('¡Cuenta creada! ¡Bienvenido, ' + response.data.user.name + '!');
+    await registerUser({ name: name.value, email: email.value, password: password.value, hard_mode: hardMode.value, gender: gender.value });
+    const loginRes = await loginUser({ email: email.value, password: password.value });
+    userStore.setToken(loginRes.data.token);
+    userStore.applyStats(loginRes.data.user);
     router.push('/home');
   } catch (error) {
-    alert('Error: ' + (error.response?.data?.message || 'No se pudo registrar'));
+    toast.show(error.response?.data?.message || 'No se pudo registrar', 'error');
+  } finally {
+    isLoading.value = false;
   }
 };
 </script>
@@ -135,6 +167,59 @@ const handleRegister = async () => {
 
 .input-group input::placeholder {
   color: #666;
+}
+
+.gender-select {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.gender-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #aaa;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.gender-option input[type="radio"] {
+  display: none;
+}
+
+.gender-option.active {
+  border-color: rgba(241, 196, 15, 0.6);
+  color: #f1c40f;
+  background: rgba(241, 196, 15, 0.06);
+}
+
+.hard-mode-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(231,76,60,0.06);
+  border: 1px solid rgba(231,76,60,0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.hard-mode-toggle input[type="checkbox"] {
+  width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; accent-color: #e74c3c; cursor: pointer;
+}
+.toggle-label {
+  font-size: 12px;
+  color: #c0392b;
+  line-height: 1.4;
+  cursor: pointer;
 }
 
 .btn-auth {

@@ -1,7 +1,17 @@
-/* Limpieza total de los estilos por defecto de Vite/Vue */
+/* Reset Vite/Vue */
 :root {
   margin: 0;
   padding: 0;
+
+  /* RPG design tokens */
+  --gold: #f1c40f;
+  --gold-dim: #b7950b;
+  --red: #e74c3c;
+  --green: #27ae60;
+  --blue: #2980b9;
+  --bg: #08080a;
+  --surface: rgba(255,255,255,0.03);
+  --border: rgba(255,255,255,0.06);
 }
 
 body {
@@ -10,7 +20,7 @@ body {
   place-items: flex-start;
   min-width: 100vw;
   min-height: 100vh;
-  background-color: #08080a;
+  background-color: var(--bg);
 }
 
 #app {
@@ -18,4 +28,35 @@ body {
   margin: 0;
   padding: 0;
   max-width: none;
+}
+
+/* Shared glass card — used across multiple panel components */
+.glass-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: clamp(8px, 1vw, 16px);
+  padding: clamp(12px, 1.4vw, 24px);
+  position: relative;
+  overflow: hidden;
+}
+.glass-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(241,196,15,0.15), transparent);
+}
+
+/* Shared section title — used in ShopPanel, QuestForge, QuestBoard */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(11px, 0.95vw, 16px);
+  font-weight: 700;
+  letter-spacing: clamp(1.5px, 0.2vw, 3px);
+  color: var(--gold);
+  margin-bottom: clamp(10px, 1.1vw, 20px);
+  padding-bottom: clamp(8px, 0.8vw, 14px);
+  border-bottom: 1px solid rgba(241,196,15,0.1);
 }

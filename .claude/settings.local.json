@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"^\\\\s*\\\\`\" \"c:/Users/diego/habit-tracker/fronted/src/stores/user.store.js\")",
+      "Bash(node -e ' *)",
+      "Bash(node --input-type=module)",
+      "Bash(node --experimental-vm-modules -e ' *)",
+      "Bash(Remove-Item -Recurse -Force \"c:/Users/diego/habit-tracker/fronted/node_modules/.vite\" -ErrorAction SilentlyContinue)",
+      "Bash(npx vite *)",
+      "Bash(node -e \"require\\('./src/controllers/user.controller.js'\\); console.log\\('OK'\\)\")",
+      "Bash(node -e \"require\\('./src/controllers/user.controller.js'\\); console.log\\('controller OK'\\)\")",
+      "Bash(node -e \"require\\('./src/config/migrate.js'\\); console.log\\('migrate OK'\\)\")",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(node \"c:/Users/diego/habit-tracker/replace_female_builders.js\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('c:/Users/diego/habit-tracker/fronted/src/data/characterData.js','utf8'\\); const i=c.indexOf\\('latente_f: \\(c, equipped'\\); const j=c.indexOf\\('backgroundCatalog'\\); console.log\\('latente_f found at char:', i\\); console.log\\('backgroundCatalog found at char:', j\\); console.log\\('Builders block ends before backgroundCatalog:', i < j\\); console.log\\('\\\\\\\\nFirst 200 chars of latente_f builder:'\\); console.log\\(c.slice\\(i, i+200\\)\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('c:/Users/diego/habit-tracker/fronted/src/data/characterData.js','utf8'\\); const checks = ['cazador_f: \\(c, equipped', 'superviviente_f: \\(c, equipped', 'ceniza_f: \\(c, equipped']; checks.forEach\\(s => console.log\\(s + ' -- found:', c.includes\\(s\\)\\)\\);\")",
+      "Bash(Remove-Item \"c:/Users/diego/habit-tracker/replace_female_builders.js\")",
+      "Bash(node \"c:/Users/diego/habit-tracker/fix_builders.js\")",
+      "Bash(sed -n '88,170p' \"c:/Users/diego/habit-tracker/fronted/src/components/QuestBoard.vue\")",
+      "Bash(sed -n '168,280p' \"c:/Users/diego/habit-tracker/fronted/src/components/QuestForge.vue\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\diego\\\\habit-tracker\\\\backend\\\\src\\\\\" -Recurse -Force | Select-Object FullName, Mode | Format-List)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\diego\\\\habit-tracker\\\\fronted\\\\src\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

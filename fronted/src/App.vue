@@ -17,7 +17,15 @@ body, html, #app {
   background-color: #08080a;
   color: #e0e0e0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  overflow: hidden;
+  overflow: visible;
+}
+
+html {
+  pointer-events: auto;
+}
+
+body {
+  background-color: #08080a;
 }
 
 /* Scrollbar estilo Cyberpunk/RPG */

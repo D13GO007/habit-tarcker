@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const UserController = require('../controllers/user.controller');
+const auth = require('../middleware/auth');
+const requireAdmin = require('../middleware/requireAdmin');
 
 const router = Router();
 
@@ -73,7 +75,7 @@ const router = Router();
  *                   items:
  *                     $ref: '#/components/schemas/User'
  */
-router.get('/', UserController.getAll);
+router.get('/', auth, requireAdmin, UserController.getAll);
 
 router.post('/login', UserController.login);
 
@@ -104,7 +106,7 @@ router.post('/login', UserController.login);
  *       404:
  *         description: Usuario no encontrado
  */
-router.get('/:id', UserController.getById);
+router.get('/:id', auth, UserController.getById);
 
 /**
  * @swagger
@@ -181,9 +183,12 @@ router.put('/:id', UserController.update);
  *       404:
  *         description: Usuario no encontrado
  */
-router.delete('/:id', UserController.remove);
+router.delete('/:id', auth, requireAdmin, UserController.remove);
 
-// Comprar recompensa (descuenta monedas en BD)
-router.post('/:id/buy', UserController.buyReward);
+router.post('/:id/buy', auth, UserController.buyReward);
+router.post('/:id/cheat-gold', auth, UserController.cheatAddGold);
+router.put('/:id/character-state', auth, UserController.saveCharacterState);
+router.post('/:id/use-potion', auth, UserController.usePotion);
+router.get('/:id/achievements', auth, UserController.getAchievements);
 
 module.exports = router;

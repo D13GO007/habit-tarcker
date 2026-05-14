@@ -1,9 +1,31 @@
 const { Router } = require('express');
+const { body } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const UserController = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
+const validate = require('../middleware/validate');
 
 const router = Router();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Demasiados intentos de login. Intenta de nuevo en 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerRules = [
+  body('name').trim().notEmpty().withMessage('El nombre es requerido').isLength({ max: 100 }).withMessage('Nombre demasiado largo'),
+  body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
+  body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres'),
+];
+
+const loginRules = [
+  body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
+  body('password').notEmpty().withMessage('La contraseña es requerida'),
+];
 
 /**
  * @swagger
@@ -77,7 +99,7 @@ const router = Router();
  */
 router.get('/', auth, requireAdmin, UserController.getAll);
 
-router.post('/login', UserController.login);
+router.post('/login', loginLimiter, loginRules, validate, UserController.login);
 
 /**
  * @swagger
@@ -137,7 +159,7 @@ router.get('/:id', auth, UserController.getById);
  *       409:
  *         description: Email ya registrado
  */
-router.post('/', UserController.create);
+router.post('/', registerRules, validate, UserController.create);
 
 /**
  * @swagger
@@ -163,7 +185,10 @@ router.post('/', UserController.create);
  *       404:
  *         description: Usuario no encontrado
  */
-router.put('/:id', UserController.update);
+router.put('/:id', auth, [
+  body('name').trim().notEmpty().withMessage('El nombre es requerido'),
+  body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
+], validate, UserController.update);
 
 /**
  * @swagger

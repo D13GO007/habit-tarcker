@@ -1,11 +1,59 @@
 const HabitModel = require('../models/habit.model.js');
-const pool = require('../config/db'); // Necesitamos la BD para actualizar al usuario
+const pool = require('../config/db');
+const {
+  HP_MAX, HP_HEAL, DAMAGE_NORMAL, DAMAGE_HARD,
+  XP_BY_DIFF, XP_BY_DIFF_WEEKLY, XP_WEEKLY_PARTIAL,
+  GOLD_BY_DIFF, GOLD_BY_DIFF_WEEKLY, GOLD_WEEKLY_PARTIAL,
+  HABITS_PAGE_SIZE, ACHIEVEMENT_CHECKS,
+} = require('../config/constants');
+
+function calculateHabitRewards(habit) {
+  if (habit.type === 'Semanal') {
+    const newDays = habit.current_days + 1;
+    if (newDays >= habit.target_days) {
+      return {
+        xpGained: XP_BY_DIFF_WEEKLY[habit.difficulty] || XP_BY_DIFF_WEEKLY['Fácil'],
+        goldGained: GOLD_BY_DIFF_WEEKLY[habit.difficulty] || GOLD_BY_DIFF_WEEKLY['Fácil'],
+        isFullyCompleted: true,
+        newDays,
+        message: null,
+      };
+    }
+    return { xpGained: XP_WEEKLY_PARTIAL, goldGained: GOLD_WEEKLY_PARTIAL, isFullyCompleted: false, newDays, message: null };
+  }
+  return {
+    xpGained: XP_BY_DIFF[habit.difficulty] || XP_BY_DIFF['Fácil'],
+    goldGained: GOLD_BY_DIFF[habit.difficulty] || GOLD_BY_DIFF['Fácil'],
+    isFullyCompleted: true,
+    newDays: habit.current_days,
+    message: null,
+  };
+}
+
+async function checkAchievements(userId, level) {
+  const [mRes, sRes] = await Promise.all([
+    pool.query('SELECT COUNT(*) FROM habit_history WHERE user_id = $1', [userId]),
+    pool.query('SELECT COALESCE(MAX(streak), 0) AS ms FROM habits WHERE user_id = $1', [userId]),
+  ]);
+  const missions = parseInt(mRes.rows[0].count);
+  const streak   = parseInt(sRes.rows[0].ms);
+  const unlocked = [];
+  for (const { key, test } of ACHIEVEMENT_CHECKS) {
+    if (!test(missions, streak, level)) continue;
+    const r = await pool.query(
+      'INSERT INTO achievements (user_id, key) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING key',
+      [userId, key]
+    );
+    if (r.rows.length) unlocked.push(key);
+  }
+  return unlocked;
+}
 
 const HabitController = {
   async getUserHabits(req, res) {
     try {
       const { userId } = req.params;
-      const habits = await HabitModel.findAllByUser(userId);
+      const habits = await HabitModel.findAllByUser(userId, HABITS_PAGE_SIZE);
       res.json(habits);
     } catch (err) {
       res.status(500).json({ message: 'Error al obtener hábitos: ' + err.message });
@@ -14,7 +62,6 @@ const HabitController = {
 
   async createHabit(req, res) {
     try {
-      // Extraemos los nuevos campos del body
       const { user_id, title, type, difficulty, target_time, target_days, deadline } = req.body;
       const newHabit = await HabitModel.create({ 
         user_id, title, type, difficulty, target_time, target_days, deadline 
@@ -37,17 +84,30 @@ const HabitController = {
   },
 
   async completeHabit(req, res) {
+    const client = await pool.connect();
     try {
       const { id } = req.params;
-      const { userId } = req.body;
+      const userId = req.userId;
 
-      // 1. Obtener la misión primero para saber de qué tipo es
-      const habitResult = await pool.query('SELECT * FROM habits WHERE id = $1', [id]);
+      await client.query('BEGIN');
+
+      const habitResult = await client.query('SELECT * FROM habits WHERE id = $1 FOR UPDATE', [id]);
       const habit = habitResult.rows[0];
-      if (!habit) return res.status(404).json({ message: 'Hábito no encontrado' });
+      if (!habit) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Hábito no encontrado' });
+      }
 
-      // 2. Obtener estadísticas del usuario
-      const userResult = await pool.query('SELECT xp, level, hp, coins FROM users WHERE id = $1', [userId]);
+      if (habit.completed) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: 'Esta misión ya fue completada hoy' });
+      }
+
+      const userResult = await client.query('SELECT xp, level, hp, coins FROM users WHERE id = $1 FOR UPDATE', [userId]);
+      if (!userResult.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Jugador no encontrado' });
+      }
       let { xp, level, hp, coins } = userResult.rows[0];
 
       let xpGained = 0;
@@ -55,38 +115,22 @@ const HabitController = {
       let isFullyCompleted = false;
       let message = '';
 
-      // --- LÓGICA DE PROGRESO SEGÚN TIPO ---
-      if (habit.type === 'Semanal') {
-        habit.current_days += 1; // Sumamos un día de progreso
-        
-        if (habit.current_days >= habit.target_days) {
-          isFullyCompleted = true; // Terminó la semana
-          xpGained = habit.difficulty === 'Difícil' ? 100 : (habit.difficulty === 'Medio' ? 60 : 30);
-          goldGained = habit.difficulty === 'Difícil' ? 150 : (habit.difficulty === 'Medio' ? 80 : 40);
-          message = `¡Semana completada! Ganaste ${xpGained} XP y ${goldGained} Oro.`;
-        } else {
-          // Recompensa parcial por el día
-          xpGained = 10;
-          goldGained = 5;
-          message = `Progreso guardado: ${habit.current_days}/${habit.target_days} días. (+${xpGained} XP)`;
-        }
-        
-        await pool.query('UPDATE habits SET current_days = $1, completed = $2 WHERE id = $3', [habit.current_days, isFullyCompleted, id]);
+      const rewards = calculateHabitRewards(habit);
+      ({ xpGained, goldGained, isFullyCompleted } = rewards);
 
+      if (habit.type === 'Semanal') {
+        message = isFullyCompleted
+          ? `¡Semana completada! Ganaste ${xpGained} XP y ${goldGained} Oro.`
+          : `Progreso guardado: ${rewards.newDays}/${habit.target_days} días. (+${xpGained} XP)`;
+        await client.query('UPDATE habits SET current_days = $1, completed = $2 WHERE id = $3', [rewards.newDays, isFullyCompleted, id]);
       } else {
-        // Diarias y Únicas se completan de un solo golpe
-        isFullyCompleted = true;
-        xpGained = habit.difficulty === 'Difícil' ? 50 : (habit.difficulty === 'Medio' ? 30 : 10);
-        goldGained = habit.difficulty === 'Difícil' ? 100 : (habit.difficulty === 'Medio' ? 50 : 10);
         message = `¡Gesta cumplida! Ganaste ${xpGained} XP y ${goldGained} Oro.`;
-        await HabitModel.complete(id);
+        await client.query('UPDATE habits SET completed = TRUE WHERE id = $1', [id]);
       }
 
-      // 3. Aplicar experiencia y curación
       xp += xpGained;
       coins += goldGained;
-      hp += 5; 
-      if (hp > 100) hp = 100;
+      hp = Math.min(hp + HP_HEAL, HP_MAX);
 
       const xpNeeded = level * 100;
       let leveledUp = false;
@@ -98,15 +142,30 @@ const HabitController = {
         message = `¡NUEVO NIVEL ALCANZADO! Ahora eres Nivel ${level}.`;
       }
 
-      const updatedUser = await pool.query(
+      const updatedUser = await client.query(
         'UPDATE users SET xp = $1, level = $2, hp = $3, coins = $4 WHERE id = $5 RETURNING id, xp, level, hp, coins',
         [xp, level, hp, coins, userId]
       );
 
-      res.json({ success: true, stats: updatedUser.rows[0], message, leveledUp });
+      await client.query(
+        'INSERT INTO habit_history (user_id, title, type, difficulty, category) VALUES ($1, $2, $3, $4, $5)',
+        [userId, habit.title, habit.type, habit.difficulty, habit.category || 'General']
+      );
+      await client.query(
+        'UPDATE users SET missions_completed = missions_completed + 1 WHERE id = $1',
+        [userId]
+      );
+
+      await client.query('COMMIT');
+
+      const newAchievements = await checkAchievements(userId, level);
+      res.json({ success: true, stats: updatedUser.rows[0], message, leveledUp, newAchievements });
 
     } catch (err) {
+      await client.query('ROLLBACK');
       res.status(500).json({ message: 'Error al completar: ' + err.message });
+    } finally {
+      client.release();
     }
   },
 
@@ -121,46 +180,61 @@ const HabitController = {
     }
   },
 
+  async getHistory(req, res) {
+    try {
+      const { rows } = await pool.query(
+        'SELECT title, type, difficulty, category, completed_at FROM habit_history WHERE user_id = $1 ORDER BY completed_at DESC LIMIT 50',
+        [req.params.userId]
+      );
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
   async failHabit(req, res) {
+    const client = await pool.connect();
     try {
       const { id } = req.params;
-      const { userId } = req.body;
+      const userId = req.userId;
 
-      // Obtener las estadísticas actuales del jugador
-      const userResult = await pool.query('SELECT xp, level, hp FROM users WHERE id = $1', [userId]);
-      if (userResult.rows.length === 0) return res.status(404).json({ message: 'Jugador no encontrado' });
-      
-      let { xp, level, hp } = userResult.rows[0];
-      
-      // Castigo de daño: perder 20 HP por fallar
-      let damage = 20;
+      await client.query('BEGIN');
+
+      const userResult = await client.query('SELECT xp, level, hp, hard_mode FROM users WHERE id = $1 FOR UPDATE', [userId]);
+      if (!userResult.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Jugador no encontrado' });
+      }
+
+      let { xp, level, hp, hard_mode } = userResult.rows[0];
+      const damage = hard_mode ? DAMAGE_HARD : DAMAGE_NORMAL;
       hp -= damage;
       let message = `¡Has recibido ${damage} de daño!`;
       let died = false;
 
-      // Mecánica de muerte (Estilo RPG)
       if (hp <= 0) {
-        hp = 100; // Revives
-        xp = 0;   // Pierdes tus "almas/experiencia" actual
+        hp = 100;
+        xp = 0;
+        if (hard_mode && level > 1) level -= 1;
         died = true;
-        message = '¡HAS MUERTO! Has perdido toda tu experiencia de este nivel.';
+        message = hard_mode
+          ? '¡HAS MUERTO! Perdiste nivel y toda tu experiencia.'
+          : '¡HAS MUERTO! Has perdido toda tu experiencia de este nivel.';
       }
 
-      // Guardar las nuevas estadísticas
-      const updatedUser = await pool.query(
-        'UPDATE users SET xp = $1, hp = $2 WHERE id = $3 RETURNING id, xp, level, hp',
-        [xp, hp, userId]
+      const updatedUser = await client.query(
+        'UPDATE users SET xp = $1, hp = $2, level = $3 WHERE id = $4 RETURNING id, xp, level, hp',
+        [xp, hp, level, userId]
       );
 
-      res.json({ 
-        success: true, 
-        stats: updatedUser.rows[0],
-        message,
-        died
-      });
+      await client.query('COMMIT');
+      res.json({ success: true, stats: updatedUser.rows[0], message, died });
 
     } catch (err) {
+      await client.query('ROLLBACK');
       res.status(500).json({ message: 'Error al procesar el fallo: ' + err.message });
+    } finally {
+      client.release();
     }
   }
 };
